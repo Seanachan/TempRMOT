@@ -5,7 +5,7 @@
 # Copyright (c) 2020 SenseTime. All Rights Reserved.
 # ------------------------------------------------------------------------
 
-nohup python3 inference.py \
+python3 inference.py \
 --meta_arch temp_rmot \
 --dataset_file e2e_rmot \
 --epoch 200 \
@@ -25,7 +25,7 @@ nohup python3 inference.py \
 --fp_ratio 0.3 \
 --query_interaction_layer QIM \
 --extra_track_attn \
---resume exps/default_rk/checkpoint0049.pth \
---rmot_path /home/seanachan/data/Dataset/refer-kitti \
+--resume exps/default_rk/checkpoint0050.pth \
+--rmot_path /home/seanachan/TempRMOT/datasets/refer-kitti \
 --hist_len 8 \
 --output_dir exps/default_rk >"exps/default_rk/test_log.txt" & echo $! >"exps/default_rk/test_pid.txt"

@@ -16,9 +16,9 @@ python3 run_mot_challenge.py \
 --SEQMAP_FILE /home/seanachan/TempRMOT/datasets/data_path/seqmap-v1.txt \
 --SKIP_SPLIT_FOL True \
 --GT_FOLDER /datasets/refer-kitti/KITTI/training/image_02 \
---TRACKERS_FOLDER /home/seanachan/TempRMOT/exps/default/results_epoch49 \
+--TRACKERS_FOLDER /home/seanachan/TempRMOT/exps/default_rk/results_epoch50 \
 --GT_LOC_FORMAT {gt_folder}{video_id}/{expression_id}/gt.txt \
---TRACKERS_TO_EVAL /home/seanachan/TempRMOT/exps/default/results_epoch49 \
+--TRACKERS_TO_EVAL /home/seanachan/TempRMOT/exps/default_rk/results_epoch50 \
 --USE_PARALLEL True \
 --NUM_PARALLEL_CORES 2 \
 --SKIP_SPLIT_FOL True \
@@ -37,3 +37,4 @@ python3 run_mot_challenge.py \
 #--NUM_PARALLEL_CORES 2 \
 #--SKIP_SPLIT_FOL True \
 #--PLOT_CURVES False
+
