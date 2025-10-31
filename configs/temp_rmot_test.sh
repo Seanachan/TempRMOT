@@ -5,7 +5,7 @@
 # Copyright (c) 2020 SenseTime. All Rights Reserved.
 # ------------------------------------------------------------------------
 
-nohup python3 inference.py \
+ python3 inference.py \
 --meta_arch temp_rmot \
 --dataset_file e2e_rmot \
 --epoch 200 \

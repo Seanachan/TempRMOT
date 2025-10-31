@@ -26,6 +26,6 @@ nohup python3 inference.py \
 --query_interaction_layer QIM \
 --extra_track_attn \
 --resume exps/default_rk/checkpoint0049.pth \
---rmot_path /home/zyn/Data/refer-kitti \
+--rmot_path /home/seanachan/data/Dataset/refer-kitti \
 --hist_len 8 \
 --output_dir exps/default_rk >"exps/default_rk/test_log.txt" & echo $! >"exps/default_rk/test_pid.txt"

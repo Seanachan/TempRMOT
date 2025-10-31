@@ -30,8 +30,6 @@ from models.structures import Instances, Boxes, pairwise_iou, matched_boxlist_io
 from transformers import RobertaModel, RobertaTokenizerFast
 from transformers import BertTokenizerFast, BertModel
 from transformers import AutoModel, AutoTokenizer
-from torchtext.data.utils import get_tokenizer
-from torchtext.vocab import GloVe, Vocab, FastText
 from einops import rearrange, repeat
 
 from .backbone import build_backbone
@@ -529,10 +527,8 @@ class TransRMOT(nn.Module):
         # self.text_encoder = RobertaModel.from_pretrained(text_encoder_type)
         # self.text_encoder.pooler = None  # this pooler is never used, this is a hack to avoid DDP problems...
 
-        self.tokenizer = RobertaTokenizerFast.from_pretrained('/data_2/zyn/Data4RMOT/FairMOT/src/roberta_base/',
-                                                              local_files_only=True)
-        self.text_encoder = RobertaModel.from_pretrained('/data_2/zyn/Data4RMOT/FairMOT/src/roberta_base/',
-                                                         local_files_only=True)
+        self.tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
+        self.text_encoder = RobertaModel.from_pretrained('roberta-base')
 
         freeze_text_encoder = True
         if freeze_text_encoder:

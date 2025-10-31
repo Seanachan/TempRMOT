@@ -511,7 +511,11 @@ if __name__ == '__main__':
         for expression_json in expression_jsons:
             seq_nums.append([video_id, expression_json])
 
-    thread_num = 8
+    # Determine number of available GPUs and processes
+    num_gpus = torch.cuda.device_count()
+    thread_num = min(8, num_gpus) if num_gpus > 0 else 1
+    print(f"Available GPUs: {num_gpus}, using {thread_num} processes")
+    
     processes = []
 
     expression_num = len(seq_nums)

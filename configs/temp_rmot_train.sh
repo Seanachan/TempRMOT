@@ -1,15 +1,14 @@
-PRETRAIN=/home/zyn/Data/MOTR/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint.pth
+PRETRAIN='/home/seanachan/TempRMOT/checkpoint_rk_v2.pth'
 EXP_DIR=default
-OUT='/home/zyn/Code/TempRMOT'
+OUT='/home/seanachan/TempRMOT'
 TRAIN_LOG_FILE="$OUT/${EXP_DIR}/train_log.txt"
 PID_FILE="$OUT/${EXP_DIR}/train_pid.txt"
 
 mkdir -p "$OUT/${EXP_DIR}"
 
-nohup python3  -m torch.distributed.launch --nproc_per_node=4 --master_port 29505 \
+nohup python3  -m torch.distributed.launch --nproc_per_node=1 --master_port 29505 \
    --use_env main.py \
-   --meta_arch temp_rmot \
-   --use_checkpoint \
+   --meta_arch temp_rmot \--use_checkpoint \
    --dataset_file e2e_rmot \
    --epoch 60 \
    --with_box_refine \
