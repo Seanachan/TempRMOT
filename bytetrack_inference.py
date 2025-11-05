@@ -12,6 +12,7 @@ import sys
 import multiprocessing as mp
 import numpy as np
 from tqdm import tqdm
+import torchvision.transforms.functional as F
 
 # --- Ensure project root on sys.path ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -65,9 +66,13 @@ def make_parser():
     parser.add_argument("--match_thresh", type=float, default=0.8, help="matching threshold")
     parser.add_argument("--aspect_ratio_thresh", type=float, default=1.6, help="filter overly tall boxes")
     parser.add_argument("--min_box_area", type=float, default=10, help="filter tiny boxes")
+    parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test MOT20 dataset")
 
     # end-to-end rmot settings
     parser.add_argument('--rmot_path', default='./datasets/refer-kitti-v2', type=str)
+    parser.add_argument('--output_dir', default='',
+                        help='path where to save, empty for no saving')
+    parser.add_argument('--exp_name', default='submit', type=str)
     return parser
 
 
@@ -80,56 +85,6 @@ def get_image_list(path):
             if ext in IMAGE_EXT:
                 image_names.append(apath)
     return image_names
-
-
-@staticmethod
-def write_results(txt_path, frame_id, bbox_xyxy, identities):
-    save_format = '{frame},{id},{x1},{y1},{w},{h},1,1,1\n'
-    with open(txt_path, 'a') as f:
-        for xyxy, track_id in zip(bbox_xyxy, identities):
-            if track_id < 0 or track_id is None:
-                continue
-            x1, y1, x2, y2 = xyxy
-            w, h = x2 - x1, y2 - y1
-            line = save_format.format(frame=int(frame_id), id=int(track_id), x1=x1, y1=y1, w=w, h=h)
-            f.write(line)
-
-@staticmethod
-def write_results_bytetrack(txt_path, results):
-    save_format = '{frame},{id},{x1},{y1},{w},{h},1,1,1\n'
-    
-    # f"{frame_id},{tid},{tlwh[0]:.2f},{tlwh[1]:.2f},{tlwh[2]:.2f},{tlwh[3]:.2f},{t.score:.2f},-1,-1,-1\n"
-    with open(txt_path, 'a') as f:
-        for result in results:
-            line = save_format.format(frame=int(results[0]), id=int(results[1]), x1=results[2], y1=results[3], w=results[4], h=results[5])
-            f.write(line)
-
-# write ground-truth for each expression in a text. The text includes gt of all frames
-@staticmethod
-def write_gt(txt_path, json_file, gt_txt_file, im_height, im_width):
-    save_format = '{frame},{id},{x1},{y1},{w},{h},1, 1, 1\n'
-
-    with open(json_file) as f:
-        json_info = json.load(f)
-
-    with open(txt_path, 'w') as f:
-        for k in json_info['label'].keys():
-            frame_id = int(k)
-            if not os.path.isfile(os.path.join(gt_txt_file, '{:06d}.txt'.format(frame_id))):
-                continue
-            frame_gt = np.loadtxt(
-                os.path.join(gt_txt_file, '{:06d}.txt'.format(frame_id))).reshape(-1, 6)
-            for frame_gt_line in frame_gt:
-                aa = json_info['label'][k]  # all gt from frame
-                aa = [int(a) for a in aa]
-                if int(frame_gt_line[1]) in aa:  # choose referent gt from all gt
-                    track_id = int(frame_gt_line[1])
-                    x1, y1, w, h = frame_gt_line[2:6] # KITTI -> [x1, y1, w, h]
-                    line = save_format.format(frame=frame_id+1, id=track_id, x1=x1 * im_width, y1=y1 * im_height,
-                                              w=w * im_width, h=h * im_height)
-                    f.write(line)
-
-    print('save gt to {}'.format(txt_path))
 
 
 def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
@@ -162,10 +117,11 @@ def load_label(label_path: str, img_size: tuple) -> dict:
     return targets
 
 # New Added
-class ListImgDataset(Dataset, bytetrack=False):
-    def __init__(self, img_list) -> None:
+class ListImgDataset(Dataset):
+    def __init__(self, img_list, bytetrack=False) -> None:
         super().__init__()
         self.img_list = img_list
+        self.bytetrack = bytetrack
 
         '''
         common settings
@@ -202,20 +158,47 @@ class ListImgDataset(Dataset, bytetrack=False):
         return len(self.img_list)
 
     def __getitem__(self, index):
-        if self.bytetrack:
-            img, targets, img_path = self.load_img_from_file(self.img_list[index]), self.img_list[index]
-        else:
-            img, targets = self.load_img_from_file(self.img_list[index])
-        return self.init_img(img)
+        img_path = self.img_list[index]
+        img, targets = self.load_img_from_file(img_path)
+        processed_img, ori_img = self.init_img(img)
+        return processed_img, ori_img, img_path
     
 class Detector(object):
-    def __init__(self, args, checkpoint_id=None, model=None, seq_num=2, fp16=False):
-        self.args = args
+    def __init__(self,
+            args,
+            model,
+            exp,
+            trt_file=None,
+            decoder=None,
+            device=torch.device("cpu"),
+            fp16=False,
+            seq_num=None
+        ):
         # TODO: modify model to bytetrack
-        self.detr = model
-        self.checkpoint_id = checkpoint_id
+        
+        self.model = model
+        self.decoder = decoder
+        self.num_classes = exp.num_classes
+        self.confthre = exp.test_conf
+        self.nmsthre = exp.nmsthre
+        self.test_size = exp.test_size
+        self.device = device
+        self.fp16 = fp16
 
         self.seq_num = seq_num
+        self.args=args
+        if trt_file is not None:
+            from torch2trt import TRTModule
+
+            model_trt = TRTModule()
+            model_trt.load_state_dict(torch.load(trt_file))
+
+            x = torch.ones((1, 3, exp.test_size[0], exp.test_size[1]), device=device)
+            self.model(x)
+            self.model = model_trt
+        self.rgb_means = (0.485, 0.456, 0.406)
+        self.std = (0.229, 0.224, 0.225) 
+        
         img_list = os.listdir(os.path.join(self.args.rmot_path, 'KITTI/training/image_02', self.seq_num[0]))
         img_list = [os.path.join(self.args.rmot_path, 'KITTI/training/image_02', self.seq_num[0], _)
                     for _ in img_list if ('jpg' in _) or ('png' in _)]
@@ -232,6 +215,7 @@ class Detector(object):
         # TODO: modify tr_tracker to bytetrack
         # self.tr_tracker = TransRMOT()
         # self.tr_tracker_withouRef = TransRMOT()
+        checkpoint_id = 51
         self.save_path = os.path.join(self.args.output_dir,
                                       'results_epoch{}/{}/{}'.format(checkpoint_id, seq_num[0], seq_num[1].split('.')[0]))
         os.makedirs(self.save_path, exist_ok=True)
@@ -284,7 +268,7 @@ class Detector(object):
         results = []
         tracker_outputs=[]
         for frame_id, (cur_img, ori_img, img_path) in enumerate(tqdm(loader)):
-            cur_img, ori_img = cur_img[0], ori_img[0]
+            cur_img, ori_img, img_path = cur_img[0], ori_img[0], img_path[0]
             seq_h, seq_w, _ = ori_img.shape
             
             outputs, img_info = predictor.inference(img_path, timer)
@@ -324,19 +308,54 @@ class Detector(object):
             res_file = osp.join(vis_folder, f"{timestamp}.txt")
             with open(res_file, 'w', encoding='utf-8') as f:
                 f.writelines(results)
-            write_results_bytetrack(
-                txt_path=os.path.join(self.save_path, 'predict.txt'),results=results
-            )
-            logger.info(f"save results to {res_file}")
             
-        
-        self.write_results(txt_path=os.path.join(self.save_path, 'predict.txt'),
-                            frame_id=(i + 1),
-                            bbox_xyxy=tracker_outputs[:, :4],
-                            identities=tracker_outputs[:, 5])
+        self.write_results_bytetrack(
+            txt_path = os.path.join(self.save_path, 'predict.txt'),
+            results=results
+        ) 
         gt_path = os.path.join(self.save_path, 'gt.txt')
         self.write_gt(gt_path, self.json_path,
-                        os.path.join(self.args.rmot_path, 'KITTI/labels_with_ids/image_02', self.seq_num[0]), seq_h, seq_w)
+                      os.path.join(self.args.rmot_path, 'KITTI/labels_with_ids/image_02', self.seq_num[0]), seq_h, seq_w)
+        
+    def write_results_bytetrack(self, txt_path, results):
+        save_format = '{frame},{id},{x1},{y1},{w},{h},1,1,1\n'
+        # Results are formatted strings like "frame_id,tid,x,y,w,h,score,-1,-1,-1\n"
+        # We need to parse and reformat to "frame,id,x1,y1,w,h,1,1,1\n"
+        with open(txt_path, 'w', encoding='utf-8') as f:
+            for result in results:
+                # Parse the CSV string
+                parts = result.strip().split(',')
+                if len(parts) >= 6:
+                    frame_id, tid, x, y, w, h = parts[0:6]
+                    line = save_format.format(frame=int(frame_id)+1, id=int(tid), 
+                                             x1=float(x), y1=float(y), w=float(w), h=float(h))
+                    f.write(line)
+
+    # write ground-truth for each expression in a text. The text includes gt of all frames
+    def write_gt(self, txt_path, json_file, gt_txt_file, im_height, im_width):
+        save_format = '{frame},{id},{x1},{y1},{w},{h},1, 1, 1\n'
+
+        with open(json_file) as f:
+            json_info = json.load(f)
+
+        with open(txt_path, 'w') as f:
+            for k in json_info['label'].keys():
+                frame_id = int(k)
+                if not os.path.isfile(os.path.join(gt_txt_file, '{:06d}.txt'.format(frame_id))):
+                    continue
+                frame_gt = np.loadtxt(
+                    os.path.join(gt_txt_file, '{:06d}.txt'.format(frame_id))).reshape(-1, 6)
+                for frame_gt_line in frame_gt:
+                    aa = json_info['label'][k]  # all gt from frame
+                    aa = [int(a) for a in aa]
+                    if int(frame_gt_line[1]) in aa:  # choose referent gt from all gt
+                        track_id = int(frame_gt_line[1])
+                        x1, y1, w, h = frame_gt_line[2:6] # KITTI -> [x1, y1, w, h]
+                        line = save_format.format(frame=frame_id+1, id=track_id, x1=x1 * im_width, y1=y1 * im_height,
+                                                w=w * im_width, h=h * im_height)
+                        f.write(line)
+
+        print('save gt to {}'.format(txt_path))
 
 
 
@@ -550,7 +569,16 @@ def main(exp, args):
     current_time = time.localtime()
     if args.demo == "image":
         for seq_num in seq_nums:
-            predictor = Detector(model, exp, trt_file, decoder, args.device, args.fp16, seq_num=seq_num)
+            predictor = Detector(
+                args=args,
+                model=model,
+                exp=exp,
+                trt_file=trt_file, 
+                decoder=decoder, 
+                device=args.device,
+                fp16= args.fp16,
+                seq_num=seq_num
+            )
             predictor.image_demo(predictor, vis_folder, current_time, args)
     # elif args.demo in ("video", "webcam"):
     #     imageflow_demo(predictor, vis_folder, current_time, args)
