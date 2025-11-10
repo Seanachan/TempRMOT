@@ -9,11 +9,16 @@ python3 bytetrack_inference.py \
 image \
 -f exps/bytetrack/yolox_x_mix_det.py \
 -c exps/bytetrack/bytetrack_x_mot17.pth.tar \
+--resume exps/bytetrack/checkpoint0051.pth \
 --fp16 \
 --fuse \
 --save_result \
-# --rmot_path "./datasets/refer-kitti \" #<- Open if wanted to test refer-kitti v1 
+ --rmot_path "./datasets/refer-kitti-v2"  
+ #<- or testing refer-kitti v2
 #&> log.txt 
 
-# --resume exps/bytetrack/checkpoint0051.pth \
 # --output_dir exps/default >"exps/bytetrack/test_log.txt" & echo $! >"exps/bytetrack/test_pid.txt"
+
+
+#  0051 --> v2
+#  0052 --> v1

@@ -73,6 +73,7 @@ def make_parser():
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
     parser.add_argument('--exp_name', default='submit', type=str)
+    parser.add_argument('--resume', default='', help='resume from checkpoint')
     return parser
 
 
@@ -215,7 +216,7 @@ class Detector(object):
         # TODO: modify tr_tracker to bytetrack
         # self.tr_tracker = TransRMOT()
         # self.tr_tracker_withouRef = TransRMOT()
-        checkpoint_id = 51
+        checkpoint_id = int(args.resume.split('/')[-1].split('.')[0].split('t')[-1])
         self.save_path = os.path.join(self.args.output_dir,
                                       'results_epoch{}/{}/{}'.format(checkpoint_id, seq_num[0], seq_num[1].split('.')[0]))
         os.makedirs(self.save_path, exist_ok=True)
